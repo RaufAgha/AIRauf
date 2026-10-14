@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wumpus Dünyası — İnteraktiv Simulyasiya</title>
+<style>
+:root{
+  --bg:#0a0c14; --panel:#141829; --panel2:#1b2136; --line:#2b3453; --text:#e8ebf7; --muted:#8c94b3;
+  --accent:#f5b83d; --good:#3ddc97; --bad:#ff5d73; --info:#5aa9ff; --purple:#b08cff; --orange:#ff9a4d;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  min-height:100vh; color:var(--text);
+  font:15px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  background:
+    radial-gradient(1100px 600px at 15% -10%, #1c2456 0%, transparent 60%),
+    radial-gradient(900px 500px at 105% 0%, #3a1a4a 0%, transparent 55%),
+    radial-gradient(800px 500px at 50% 120%, #10302c 0%, transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px 28px 6px;max-width:1280px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#3a2f6e,#1c2a55);display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.1)}
+.logo svg{width:34px;height:34px}
+h1{margin:0;font-size:24px;letter-spacing:.3px}
+.brand small{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+.session{display:flex;gap:8px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.pill b{color:var(--text);font-variant-numeric:tabular-nums}
+.dot{width:8px;height:8px;border-radius:50%}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:22px;max-width:1280px;margin:0 auto;padding:12px 28px 40px;align-items:start}
+@media(max-width:1000px){.layout{grid-template-columns:1fr;padding:12px 14px 30px}.top{padding:16px 14px 4px}}
+
+/* ---------- Board ---------- */
+.stage{display:flex;flex-direction:column;gap:14px;align-items:center}
+.board{
+  --n:4; position:relative; width:min(100%,700px); aspect-ratio:1; border-radius:20px; overflow:hidden; background:#080a12;
+  box-shadow:0 0 0 2px #2c3558,0 0 0 8px rgba(20,24,41,.9),0 30px 90px rgba(0,0,0,.65),0 0 80px rgba(120,90,255,.12);
+}
+.grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(var(--n),1fr);grid-template-rows:repeat(var(--n),1fr)}
+.cell{
+  position:relative; border:1px solid rgba(255,255,255,.055);
+  background:
+    radial-gradient(120% 120% at 25% 15%, rgba(255,255,255,.06), transparent 55%),
+    linear-gradient(160deg,#252c47,#181d31 70%);
+  transition:background .5s, box-shadow .5s;
+}
+.cell::before{content:"";position:absolute;inset:0;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1.2px);background-size:9px 9px;pointer-events:none}
+.cell.visited{
+  background:
+    radial-gradient(110% 110% at 30% 20%, rgba(255,214,120,.16), transparent 60%),
+    linear-gradient(160deg,#343a58,#232842 70%);
+  box-shadow:inset 0 0 22px rgba(245,184,61,.08);
+}
+.cell.fog{background:repeating-linear-gradient(45deg,#090b14 0 9px,#0c0f1b 9px 18px)}
+.cell.fog::before{opacity:0}
+.cell.fog::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 70% at 50% 50%,rgba(120,130,190,.07),transparent 70%)}
+.cell .coord{position:absolute;left:7px;bottom:5px;font:600 10px ui-monospace,Menlo,Consolas,monospace;color:rgba(255,255,255,.28)}
+.cell .exit{position:absolute;left:7px;top:6px;font:700 9.5px/1 "Segoe UI",sans-serif;letter-spacing:1.2px;color:var(--accent);opacity:.85}
+.ico{position:absolute;inset:13%;width:74%;height:74%;filter:drop-shadow(0 6px 8px rgba(0,0,0,.55))}
+.ico.wump{animation:bob 2.6s ease-in-out infinite}
+.ico.gold{animation:glow 2.2s ease-in-out infinite}
+.ico.pitico{animation:pulse 3s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}
+@keyframes glow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,214,90,.55))}50%{filter:drop-shadow(0 0 18px rgba(255,226,120,.95))}}
+@keyframes pulse{0%,100%{opacity:.92}50%{opacity:1;transform:scale(1.03)}}
+.badges{position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:2}
+.bd{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(2px)}
+.bd svg{width:15px;height:15px}
+.bd.br{background:rgba(90,169,255,.22);color:#9cd0ff}
+.bd.st{background:rgba(120,220,90,.2);color:#a6f07f}
+.kb{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:3px 8px;border-radius:8px;font:700 11px/1.2 "Segoe UI",sans-serif;letter-spacing:.3px;white-space:nowrap;border:1px solid}
+.kb.safe{color:#7cf0b8;background:rgba(61,220,151,.12);border-color:rgba(61,220,151,.4)}
+.kb.maybe{color:#ffd37a;background:rgba(245,184,61,.1);border-color:rgba(245,184,61,.35)}
+.kb.danger{color:#ff8fa0;background:rgba(255,93,115,.14);border-color:rgba(255,93,115,.5)}
+
+/* agent */
+.agent{position:absolute;left:0;top:0;width:calc(100%/var(--n));height:calc(100%/var(--n));z-index:6;pointer-events:none;transition:transform .5s cubic-bezier(.45,.05,.25,1)}
+.agent .body{position:absolute;inset:6%;transition:transform .4s cubic-bezier(.4,.1,.2,1)}
+.agent svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6))}
+.agent.noanim,.agent.noanim .body{transition:none!important}
+.agent .carry{position:absolute;right:4%;bottom:4%;width:34%;height:34%;display:none;filter:drop-shadow(0 0 8px rgba(255,220,100,.9))}
+.agent.has .carry{display:block}
+.agent.dead .body{filter:grayscale(1) brightness(.6);transform-origin:center}
+.agent.dead{opacity:.85}
+.agent.win::after{content:"";position:absolute;inset:-30%;border-radius:50%;background:radial-gradient(circle,rgba(255,226,120,.55),transparent 65%);animation:pulse 1.2s infinite}
+.arrow{position:absolute;width:calc(100%/var(--n)*.9);aspect-ratio:64/24;z-index:7;pointer-events:none;filter:drop-shadow(0 0 6px rgba(255,255,255,.6))}
+.arrow svg{width:100%;height:100%}
+
+.banner{position:absolute;top:14px;left:50%;transform:translate(-50%,-30px);opacity:0;z-index:20;padding:9px 18px;border-radius:12px;font-weight:700;letter-spacing:.3px;
+  background:rgba(20,24,41,.92);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.5);transition:.35s;pointer-events:none;white-space:nowrap}
+.banner.show{opacity:1;transform:translate(-50%,0)}
+.banner.good{color:var(--good);border-color:rgba(61,220,151,.5)}
+.banner.bad{color:var(--bad);border-color:rgba(255,93,115,.5)}
+.banner.warn{color:var(--orange);border-color:rgba(255,154,77,.5)}
+.banner.purple{color:var(--purple);border-color:rgba(176,140,255,.5)}
+.flash{position:absolute;inset:0;z-index:15;pointer-events:none;opacity:0}
+.flash.go{animation:fl .7s ease-out}
+@keyframes fl{0%{opacity:.55}100%{opacity:0}}
+
+.overlay{position:absolute;inset:0;z-index:30;display:none;place-items:center;background:rgba(6,8,16,.66);backdrop-filter:blur(3px)}
+.overlay.show{display:grid;animation:fade .4s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.end-card{width:min(88%,420px);text-align:center;padding:26px 24px;border-radius:20px;background:linear-gradient(180deg,#1d2440,#131829);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.end-card h2{margin:6px 0 6px;font-size:28px}
+.end-card p{margin:0 0 14px;color:var(--muted)}
+.end-card .big{font-size:42px;font-weight:800;font-variant-numeric:tabular-nums;margin:2px 0 4px}
+.end-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.end-card.win h2,.end-card.win .big{color:var(--accent)}
+.end-card.lose h2{color:var(--bad)}
+.end-card.left h2{color:var(--info)}
+
+/* percept chips */
+.percepts{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;width:min(100%,700px)}
+.chip{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid var(--line);color:#5c6485;transition:.25s;text-align:center;font-size:12px;font-weight:600}
+.chip svg{width:26px;height:26px}
+.chip.on{color:var(--c);border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--c) 35%,transparent)}
+.chip.breeze{--c:#7bbcff}.chip.stench{--c:#9be86a}.chip.glitter{--c:#ffd54a}.chip.bump{--c:#ff9a4d}.chip.scream{--c:#b08cff}
+.thought{width:min(100%,700px);padding:13px 16px;border-radius:14px;background:linear-gradient(180deg,rgba(90,169,255,.09),rgba(90,169,255,.03));border:1px solid rgba(90,169,255,.28);color:#cfe3ff;font-size:14px}
+.thought b{display:block;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#7bbcff;margin-bottom:3px}
+
+/* ---------- Side ---------- */
+.side{display:flex;flex-direction:column;gap:14px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.card h3{margin:0 0 10px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.stats{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+.stat{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+.stat span{display:block;font-size:11px;color:var(--muted);letter-spacing:.6px}
+.stat b{font-size:24px;font-variant-numeric:tabular-nums}
+.stat.score b{font-size:30px}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:12px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--text);font-weight:600}
+.btns{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+.btn{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:10px 12px;border-radius:12px;font:600 14px inherit;cursor:pointer;transition:.18s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{background:rgba(255,255,255,.1);transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn.primary{background:linear-gradient(135deg,#f5b83d,#e8872a);color:#2a1a00;border-color:transparent;box-shadow:0 8px 22px rgba(245,150,40,.3)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.field{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;font-size:13.5px}
+.field label{color:var(--muted)}
+input[type=range]{accent-color:var(--accent);width:150px}
+select{background:#0f1322;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font:inherit}
+.switch{display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:13.5px;color:var(--text);cursor:pointer;user-select:none}
+.switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:#2a3250;position:relative;cursor:pointer;transition:.2s;flex:none}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked{background:var(--good)}
+.switch input:checked::after{left:21px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad .btn{padding:10px 6px;font-size:13px;flex-direction:column;gap:2px}
+.pad kbd,.kbd{font:600 10.5px ui-monospace,Menlo,monospace;color:var(--muted);background:rgba(255,255,255,.07);border-radius:5px;padding:1px 6px}
+.log{max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:5px;padding-right:4px;scrollbar-width:thin}
+.l{padding:6px 10px;border-radius:9px;background:rgba(255,255,255,.035);border-left:3px solid #4b5578;font-size:13px}
+.l i{font-style:normal;color:var(--muted);font-size:11px;margin-right:6px;font-variant-numeric:tabular-nums}
+.l.move{border-color:#5aa9ff}.l.percept{border-color:#9be86a}.l.good{border-color:var(--good)}.l.bad{border-color:var(--bad)}.l.warn{border-color:var(--orange)}.l.info{border-color:#8c94b3}.l.shoot{border-color:var(--purple)}
+details summary{cursor:pointer;font-weight:700;color:var(--muted);font-size:12px;letter-spacing:1.5px;text-transform:uppercase}
+details[open] summary{margin-bottom:10px}
+.rules{font-size:13.5px;color:#c4cae3}
+.rules ul{margin:6px 0 10px;padding-left:18px}
+.rules li{margin:3px 0}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-top:6px}
+.legend div{display:flex;align-items:center;gap:8px;font-size:13px}
+.legend svg{width:26px;height:26px;flex:none}
+footer{max-width:1280px;margin:0 auto;padding:0 28px 28px;color:#5c6485;font-size:12.5px;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ============ SVG Symbols ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="gWump" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#a6ec7a"/><stop offset=".6" stop-color="#4fa84a"/><stop offset="1" stop-color="#236a36"/></radialGradient>
+    <radialGradient id="gWumpD" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#b9c2b2"/><stop offset="1" stop-color="#5f6a5e"/></radialGradient>
+    <radialGradient id="gPit" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#000"/><stop offset=".7" stop-color="#0d0a08"/><stop offset="1" stop-color="#3a2d20"/></radialGradient>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0a0"/><stop offset=".5" stop-color="#ffc933"/><stop offset="1" stop-color="#d48a00"/></linearGradient>
+    <linearGradient id="gBeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff3b0" stop-opacity=".65"/><stop offset="1" stop-color="#fff3b0" stop-opacity="0"/></linearGradient>
+  </defs>
+
+  <symbol id="i-wumpus" viewBox="0 0 64 64">
+    <path d="M13 24 L6 5 L25 16Z" fill="#efe7cb" stroke="#6b5a2b" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M51 24 L58 5 L39 16Z" fill="#efe7cb" stroke="#6b5a2b" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8 40 C6 21 19 12 32 12 C45 12 58 21 56 40 C55 55 45 60 32 60 C19 60 9 55 8 40Z" fill="url(#gWump)" stroke="#1e4a2a" stroke-width="2.2"/>
+    <circle cx="16" cy="44" r="3" fill="#2f7a3a" opacity=".6"/><circle cx="48" cy="46" r="3.5" fill="#2f7a3a" opacity=".6"/><circle cx="32" cy="20" r="2.4" fill="#2f7a3a" opacity=".5"/>
+    <ellipse cx="22" cy="31" rx="7" ry="8" fill="#fff" stroke="#1e4a2a" stroke-width="1.5"/>
+    <ellipse cx="42" cy="31" rx="7" ry="8" fill="#fff" stroke="#1e4a2a" stroke-width="1.5"/>
+    <circle cx="23.5" cy="32.5" r="3.6" fill="#d0142f"/><circle cx="40.5" cy="32.5" r="3.6" fill="#d0142f"/>
+    <circle cx="24.4" cy="31.5" r="1.1" fill="#fff"/><circle cx="41.4" cy="31.5" r="1.1" fill="#fff"/>
+    <path d="M14 22 L29 27" stroke="#1b2a18" stroke-width="3" stroke-linecap="round"/><path d="M50 22 L35 27" stroke="#1b2a18" stroke-width="3" stroke-linecap="round"/>
+    <path d="M17 46 Q32 58 47 46 Q32 51 17 46Z" fill="#35091a" stroke="#1b0510" stroke-width="1.2"/>
+    <path d="M21 47.5 l3 6 l3 -5z M30 49.5 l2.5 6 l2.5 -6z M38 48.5 l3 -6.5 l-6 1z" fill="#fff"/>
+  </symbol>
+  <symbol id="i-wumpus-dead" viewBox="0 0 64 64">
+    <path d="M13 24 L6 5 L25 16Z" fill="#cfcaba" stroke="#58532f" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M51 24 L58 5 L39 16Z" fill="#cfcaba" stroke="#58532f" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8 40 C6 21 19 12 32 12 C45 12 58 21 56 40 C55 55 45 60 32 60 C19 60 9 55 8 40Z" fill="url(#gWumpD)" stroke="#3b443a" stroke-width="2.2"/>
+    <path d="M16 26 l12 10 M28 26 l-12 10 M36 26 l12 10 M48 26 l-12 10" stroke="#2a2f2a" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M20 47 Q32 51 44 47" stroke="#2a2f2a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M30 49 q2 10 6 0z" fill="#d9607a"/>
+  </symbol>
+  <symbol id="i-pit" viewBox="0 0 64 64">
+    <ellipse cx="32" cy="35" rx="29" ry="23" fill="#3a2d20" stroke="#5a4733" stroke-width="2"/>
+    <ellipse cx="32" cy="35" rx="24" ry="18.5" fill="url(#gPit)"/>
+    <ellipse cx="32" cy="38" rx="13" ry="9" fill="#000" opacity=".9"/>
+    <path d="M21 42 l2.5 -9 l2.5 9z M29.5 44 l3 -11 l3 11z M38 42 l2.5 -9 l2.5 9z" fill="#c7cee0" opacity=".85"/>
+    <path d="M9 28 q4 -9 14 -11 M55 28 q-4 -9 -14 -11" stroke="rgba(255,255,255,.15)" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-gold" viewBox="0 0 64 64">
+    <path d="M6 52 L14 38 H40 L48 52Z" fill="url(#gGold)" stroke="#8a5a00" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M14 38 L20 30 H40 L40 38Z" fill="#ffe27a" stroke="#8a5a00" stroke-width="1.2" opacity=".9"/>
+    <path d="M26 38 L32 27 H54 L60 38Z" fill="url(#gGold)" stroke="#8a5a00" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M22 18 L28 27 H44 L50 18Z" fill="url(#gGold)" stroke="#8a5a00" stroke-width="1.6" stroke-linejoin="round" opacity="0"/>
+    <path d="M10 49 H42" stroke="#fff3b0" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+    <path d="M30 34 H55" stroke="#fff3b0" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+    <path d="M50 6 l2.2 6.5 l6.5 2.2 l-6.5 2.2 l-2.2 6.5 l-2.2 -6.5 l-6.5 -2.2 l6.5 -2.2z" fill="#fffbe0"/>
+    <path d="M12 12 l1.5 4 l4 1.5 l-4 1.5 l-1.5 4 l-1.5 -4 l-4 -1.5 l4 -1.5z" fill="#fff3b0"/>
+  </symbol>
+  <symbol id="i-agent" viewBox="0 0 64 64">
+    <path d="M40 32 L64 14 L64 50 Z" fill="url(#gBeam)"/>
+    <rect x="8" y="22" width="12" height="20" rx="4" fill="#7a4b22" stroke="#3b220d" stroke-width="1.5"/>
+    <ellipse cx="29" cy="32" rx="9.5" ry="18" fill="#2f6df0" stroke="#0b2a66" stroke-width="2"/>
+    <ellipse cx="36" cy="16.5" rx="7" ry="3.6" fill="#2f6df0" stroke="#0b2a66" stroke-width="1.5"/>
+    <ellipse cx="36" cy="47.5" rx="7" ry="3.6" fill="#2f6df0" stroke="#0b2a66" stroke-width="1.5"/>
+    <circle cx="43" cy="16.5" r="2.8" fill="#f1c9a0"/><circle cx="43" cy="47.5" r="2.8" fill="#f1c9a0"/>
+    <circle cx="30" cy="32" r="10.8" fill="#f5b83d" stroke="#8a5a00" stroke-width="2"/>
+    <path d="M25 26 a8 8 0 0 1 10 0" stroke="#fff3c4" stroke-width="2" fill="none" opacity=".7" stroke-linecap="round"/>
+    <circle cx="39" cy="32" r="3.8" fill="#fff" stroke="#c9a227" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-arrow" viewBox="0 0 64 24">
+    <path d="M3 12H54" stroke="#e8d9b0" stroke-width="3" stroke-linecap="round"/>
+    <path d="M52 4 L63 12 L52 20Z" fill="#d8deee"/>
+    <path d="M3 12 L11 5 M3 12 L11 19 M10 12 L18 5 M10 12 L18 19" stroke="#ff5d73" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-breeze" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 13h14a3 3 0 1 1-3 3"/><path d="M3 18h6"/></g></symbol>
+  <symbol id="i-stench" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 21c-3-3 3-4 0-8s3-4 0-8"/><path d="M12 21c-3-3 3-4 0-8s3-4 0-8"/><path d="M18 21c-3-3 3-4 0-8s3-4 0-8"/></g></symbol>
+  <symbol id="i-glitter" viewBox="0 0 24 24"><g fill="currentColor"><path d="M12 2l2.2 6.3L20.5 10.5l-6.3 2.2L12 19l-2.2-6.3L3.5 10.5l6.3-2.2z"/><path d="M19 15l1 2.8 2.8 1-2.8 1-1 2.8-1-2.8-2.8-1 2.8-1z" opacity=".8"/></g></symbol>
+  <symbol id="i-bump" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v18"/><path d="M20 12H8"/><path d="M12 8l-4 4 4 4"/></g></symbol>
+  <symbol id="i-scream" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></g></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <div class="logo"><svg viewBox="0 0 64 64"><use href="#i-wumpus"/></svg></div>
+    <div>
+      <h1>Wumpus Dünyası</h1>
+      <small>Hunt the Wumpus · Məntiqi çıxarış edən agentin simulyasiyası</small>
+    </div>
+  </div>
+  <div class="session">
+    <span class="pill"><span class="dot" style="background:var(--good)"></span>Qələbə <b id="sWin">0</b></span>
+    <span class="pill"><span class="dot" style="background:var(--bad)"></span>Ölüm <b id="sDead">0</b></span>
+    <span class="pill"><span class="dot" style="background:var(--info)"></span>Boş çıxış <b id="sLeft">0</b></span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage">
+    <div class="board" id="board">
+      <div class="grid" id="grid"></div>
+      <div class="agent" id="agent"><div class="body" id="agentBody"><svg viewBox="0 0 64 64"><use href="#i-agent"/></svg></div><svg class="carry" viewBox="0 0 64 64"><use href="#i-gold"/></svg></div>
+      <div class="flash" id="flash"></div>
+      <div class="banner" id="banner"></div>
+      <div class="overlay" id="overlay"></div>
+    </div>
+
+    <div class="percepts" id="percepts">
+      <div class="chip breeze" data-p="breeze"><svg viewBox="0 0 24 24"><use href="#i-breeze"/></svg>Meh</div>
+      <div class="chip stench" data-p="stench"><svg viewBox="0 0 24 24"><use href="#i-stench"/></svg>Üfunət</div>
+      <div class="chip glitter" data-p="glitter"><svg viewBox="0 0 24 24"><use href="#i-glitter"/></svg>Parıltı</div>
+      <div class="chip bump" data-p="bump"><svg viewBox="0 0 24 24"><use href="#i-bump"/></svg>Toqquşma</div>
+      <div class="chip scream" data-p="scream"><svg viewBox="0 0 24 24"><use href="#i-scream"/></svg>Qışqırıq</div>
+    </div>
+
+    <div class="thought"><b>Agentin düşüncəsi</b><span id="thought">—</span></div>
+  </section>
+
+  <aside class="side">
+    <div class="card">
+      <h3>Vəziyyət</h3>
+      <div class="stats">
+        <div class="stat score"><span>XAL</span><b id="vScore">0</b></div>
+        <div class="stat"><span>ADDIM</span><b id="vSteps">0</b></div>
+        <div class="stat"><span>OX</span><b id="vArrows">1</b></div>
+      </div>
+      <div class="meta">
+        <div>Mövqe: <b id="vPos">(1,1)</b></div>
+        <div>Baxış: <b id="vDir">Şərq</b></div>
+        <div>Qızıl: <b id="vGold">yoxdur</b></div>
+        <div>Wumpus: <b id="vWump">sağdır</b></div>
+        <div>Dünya: <b id="vWorld">4×4</b></div>
+        <div>Quyu sayı: <b id="vPits">0</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Simulyasiya</h3>
+      <div class="btns">
+        <button class="btn primary" id="bAuto">▶ Avtomatik</button>
+        <button class="btn" id="bStep">⏭ Bir addım</button>
+        <button class="btn" id="bReplay">↺ Eyni dünya</button>
+        <button class="btn" id="bNew">✦ Yeni dünya</button>
+      </div>
+      <div class="field"><label>Sürət</label><input type="range" id="speed" min="1" max="10" value="6"></div>
+      <div class="field"><label>Dünya ölçüsü</label>
+        <select id="size"><option value="4">4 × 4</option><option value="5">5 × 5</option><option value="6">6 × 6</option></select></div>
+      <div class="field"><label>Quyu ehtimalı: <b id="pitLbl">20%</b></label><input type="range" id="pitP" min="10" max="30" step="5" value="20"></div>
+      <label class="switch">Xəritəni göstər (duman yox)<input type="checkbox" id="tReveal"></label>
+      <label class="switch">Agentin biliyini göstər<input type="checkbox" id="tKB" checked></label>
+    </div>
+
+    <div class="card">
+      <h3>Əl ilə idarəetmə</h3>
+      <div class="pad">
+        <button class="btn" data-a="left">⟲ Sola<kbd>←</kbd></button>
+        <button class="btn" data-a="forward">↑ İrəli<kbd>↑</kbd></button>
+        <button class="btn" data-a="right">⟳ Sağa<kbd>→</kbd></button>
+        <button class="btn" data-a="grab">Götür<kbd>G</kbd></button>
+        <button class="btn" data-a="shoot">Ox at<kbd>Space</kbd></button>
+        <button class="btn" data-a="climb">Çıx<kbd>C</kbd></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Hadisələr jurnalı</h3>
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="card">
+      <details class="rules">
+        <summary>Qaydalar və işarələr</summary>
+        <ul>
+          <li><b>Məqsəd:</b> qızılı tapıb (1,1) xanasından mağaradan çıxmaq.</li>
+          <li><b>Xal:</b> hər əməl −1, ox atmaq əlavə −10, qızılla çıxış +1000, ölüm −1000.</li>
+          <li><b>Meh</b> — qonşu xanada quyu var. <b>Üfunət</b> — qonşu xanada Wumpus var.</li>
+          <li><b>Parıltı</b> — qızıl bu xanadadır. <b>Toqquşma</b> — divara dəydin. <b>Qışqırıq</b> — Wumpus öldü.</li>
+          <li>Agentin yalnız <b>1 oxu</b> var; ox baxdığı istiqamətdə düz uçur.</li>
+        </ul>
+        <div class="legend">
+          <div><svg viewBox="0 0 64 64"><use href="#i-wumpus"/></svg>Wumpus</div>
+          <div><svg viewBox="0 0 64 64"><use href="#i-pit"/></svg>Quyu</div>
+          <div><svg viewBox="0 0 64 64"><use href="#i-gold"/></svg>Qızıl</div>
+          <div><svg viewBox="0 0 64 64"><use href="#i-agent"/></svg>Agent</div>
+        </div>
+        <ul style="margin-top:10px">
+          <li><span class="kb safe" style="position:static;transform:none;display:inline-block">Təhlükəsiz</span> — məntiqlə sübut olunub</li>
+          <li><span class="kb maybe" style="position:static;transform:none;display:inline-block">Q? W?</span> — quyu / Wumpus ola bilər</li>
+          <li><span class="kb danger" style="position:static;transform:none;display:inline-block">Quyu!</span> — dəqiq təhlükə</li>
+        </ul>
+      </details>
+    </div>
+  </aside>
+</main>
+<footer>Agent hər addımda hissləri qeyd edir, təhlükəsiz xanaları məntiqi çıxarışla sübut edir və lazım olduqda riski hesablayır. Klaviatura: ← ↑ → · G · Space · C · Enter (addım) · N (yeni dünya)</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const DIRS = [
+  {dx: 1, dy: 0, name: 'Şərq',  ang: 0},
+  {dx: 0, dy: 1, name: 'Şimal', ang: -90},
+  {dx: -1, dy: 0, name: 'Qərb', ang: 180},
+  {dx: 0, dy: -1, name: 'Cənub', ang: 90}
+];
+const key = (x, y) => x + ',' + y;
+const parse = k => k.split(',').map(Number);
+let N = 4, pitP = 0.2;
+let world0, world, agent, kb, inf, stats, trans, logs, thought, angle;
+let reveal = false, showKB = true, auto = false, timer = null, endTimer = null;
+const sess = {win: 0, dead: 0, left: 0};
+
+const inb = (x, y) => x >= 1 && y >= 1 && x <= N && y <= N;
+const nbk = (x, y) => DIRS.map(d => ({x: x + d.dx, y: y + d.dy})).filter(c => inb(c.x, c.y)).map(c => ({x: c.x, y: c.y, k: key(c.x, c.y)}));
+const rand = n => Math.floor(Math.random() * n);
+const isPit = (x, y) => world.pitSet.has(key(x, y));
+
+/* ===================== World ===================== */
+function reachableGold(n, pits, w, g) {
+  const seen = new Set(['1,1']), q = [[1, 1]];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const d of DIRS) {
+      const nx = x + d.dx, ny = y + d.dy, k = key(nx, ny);
+      if (nx < 1 || ny < 1 || nx > n || ny > n || seen.has(k) || pits.has(k) || (nx === w.x && ny === w.y)) continue;
+      seen.add(k); q.push([nx, ny]);
+    }
+  }
+  return seen.has(key(g.x, g.y));
+}
+function genWorld(n, p) {
+  const cells = [];
+  for (let x = 1; x <= n; x++) for (let y = 1; y <= n; y++) cells.push({x, y});
+  for (let t = 0; t < 3000; t++) {
+    const pits = new Set();
+    cells.forEach(c => { if (!(c.x === 1 && c.y === 1) && Math.random() < p) pits.add(key(c.x, c.y)); });
+    if (pits.size === 0) continue;
+    const free = cells.filter(c => !(c.x === 1 && c.y === 1) && !pits.has(key(c.x, c.y)));
+    if (free.length < 2) continue;
+    const w = free[rand(free.length)];
+    const rest = free.filter(c => c !== w);
+    const g = rest[rand(rest.length)];
+    if (reachableGold(n, pits, w, g)) {
+      return {n, pits: [...pits], wumpus: {x: w.x, y: w.y, alive: true}, gold: {x: g.x, y: g.y, taken: false}};
+    }
+  }
+  return {n, pits: ['3,1'], wumpus: {x: 1, y: 3, alive: true}, gold: {x: 2, y: 2, taken: false}};
+}
+function perceive(x, y) {
+  const p = {breeze: false, stench: false, glitter: false};
+  for (const c of nbk(x, y)) {
+    if (isPit(c.x, c.y)) p.breeze = true;
+    if (world.wumpus.alive && world.wumpus.x === c.x && world.wumpus.y === c.y) p.stench = true;
+  }
+  if (!world.gold.taken && world.gold.x === x && world.gold.y === y) p.glitter = true;
+  return p;
+}
+const perceptText = p => {
+  const a = [];
+  if (p.breeze) a.push('Meh');
+  if (p.stench) a.push('Üfunət');
+  if (p.glitter) a.push('Parıltı');
+  return a.length ? a.join(', ') : 'heç nə';
+};
+
+/* ===================== Game lifecycle ===================== */
+function newWorld() {
+  world0 = genWorld(N, pitP);
+  startGame(world0);
+}
+function startGame(w) {
+  stopAuto();
+  clearTimeout(endTimer);
+  world = {n: w.n, pits: [...w.pits], pitSet: new Set(w.pits), wumpus: {...w.wumpus}, gold: {...w.gold}};
+  N = world.n;
+  agent = {x: 1, y: 1, dir: 0, hasGold: false, arrows: 1, alive: true, done: false};
+  kb = {visited: new Set(), breeze: new Map(), stench: new Map(), missed: new Set(), wumpusDead: false, stenchSeen: false};
+  stats = {score: 0, steps: 0};
+  trans = {bump: false, scream: false};
+  logs = [];
+  angle = 0;
+  thought = 'Mağaraya daxil oldum. Ətrafı yoxlayıram…';
+  $('#overlay').classList.remove('show');
+  const a = $('#agent');
+  a.classList.add('noanim'); $('#agentBody').style.transform = 'rotate(0deg)';
+  addLog('info', `Yeni dünya: ${N}×${N}, ${world.pits.length} quyu, 1 Wumpus, 1 qızıl.`);
+  const p = observe();
+  addLog('percept', 'Başlanğıc xanada hiss olunur: ' + perceptText(p) + '.');
+  render();
+  void a.offsetWidth;
+  a.classList.remove('noanim');
+  $('#vWorld').textContent = N + '×' + N;
+  $('#vPits').textContent = world.pits.length;
+}
+function observe() {
+  const p = perceive(agent.x, agent.y), k = key(agent.x, agent.y);
+  kb.visited.add(k); kb.breeze.set(k, p.breeze); kb.stench.set(k, p.stench);
+  if (p.stench) kb.stenchSeen = true;
+  return p;
+}
+
+/* ===================== Agent inference ===================== */
+function infer() {
+  const noPit = new Set(kb.visited);
+  const noW = new Set([...kb.visited, ...kb.missed]);
+  kb.breeze.forEach((b, k) => { if (!b) { const [x, y] = parse(k); nbk(x, y).forEach(c => noPit.add(c.k)); } });
+  kb.stench.forEach((s, k) => { if (!s) { const [x, y] = parse(k); nbk(x, y).forEach(c => noW.add(c.k)); } });
+  let cands = new Set();
+  if (!kb.wumpusDead) {
+    for (let x = 1; x <= N; x++) for (let y = 1; y <= N; y++) { const k = key(x, y); if (!noW.has(k)) cands.add(k); }
+    kb.stench.forEach((s, k) => {
+      if (s) {
+        const [x, y] = parse(k);
+        const nb = new Set(nbk(x, y).map(c => c.k));
+        cands = new Set([...cands].filter(c => nb.has(c)));
+      }
+    });
+  }
+  const pitSure = new Set();
+  kb.breeze.forEach((b, k) => {
+    if (b) {
+      const [x, y] = parse(k);
+      const unk = nbk(x, y).filter(c => !noPit.has(c.k));
+      if (unk.length === 1) pitSure.add(unk[0].k);
+    }
+  });
+  const wSure = (kb.stenchSeen && cands.size === 1) ? [...cands][0] : null;
+  inf = {noPit, noW, cands, pitSure, wSure, safe: k => kb.visited.has(k) || (noPit.has(k) && !cands.has(k))};
+  return inf;
+}
+function riskOf(k) {
+  let pPit = 0;
+  if (!inf.noPit.has(k)) {
+    pPit = pitP;
+    kb.breeze.forEach((b, bk) => {
+      if (b) {
+        const [x, y] = parse(bk), nbs = nbk(x, y);
+        if (nbs.some(c => c.k === k)) pPit = Math.max(pPit, 1 / nbs.filter(c => !inf.noPit.has(c.k)).length);
+      }
+    });
+  }
+  const pW = inf.cands.has(k) ? 1 / inf.cands.size : 0;
+  return pPit + pW - pPit * pW;
+}
+function bfs(startK, goalFn, allowFn) {
+  if (goalFn(startK)) return [];
+  const q = [startK], prev = new Map([[startK, null]]);
+  while (q.length) {
+    const c = q.shift(), [x, y] = parse(c);
+    for (const n of nbk(x, y)) {
+      if (prev.has(n.k) || !allowFn(n.k)) continue;
+      prev.set(n.k, c);
+      if (goalFn(n.k)) {
+        const path = []; let t = n.k;
+        while (t !== startK) { path.unshift(t); t = prev.get(t); }
+        return path;
+      }
+      q.push(n.k);
+    }
+  }
+  return null;
+}
+function safeDist() {
+  const s = key(agent.x, agent.y), dist = new Map([[s, 0]]), q = [s];
+  while (q.length) {
+    const c = q.shift(), [x, y] = parse(c);
+    for (const n of nbk(x, y)) if (!dist.has(n.k) && inf.safe(n.k)) { dist.set(n.k, dist.get(c) + 1); q.push(n.k); }
+  }
+  return dist;
+}
+function turnToward(want) {
+  const diff = (want - agent.dir + 4) % 4;
+  return diff === 0 ? null : (diff === 3 ? 'right' : 'left');
+}
+function stepToward(k) {
+  const [x, y] = parse(k);
+  const want = DIRS.findIndex(d => d.dx === x - agent.x && d.dy === y - agent.y);
+  return turnToward(want) || 'forward';
+}
+function rayCells(x, y, d) {
+  const out = []; let cx = x + DIRS[d].dx, cy = y + DIRS[d].dy;
+  while (inb(cx, cy)) { out.push(key(cx, cy)); cx += DIRS[d].dx; cy += DIRS[d].dy; }
+  return out;
+}
+function decide() {
+  infer();
+  const here = key(agent.x, agent.y), p = perceive(agent.x, agent.y);
+  const atStart = agent.x === 1 && agent.y === 1;
+  if (p.glitter && !agent.hasGold) return {a: 'grab', why: 'Parıltı hiss etdim — qızıl bu xanadadır, götürürəm!'};
+
+  const goHome = (why) => {
+    if (atStart) return {a: 'climb', why: 'Başlanğıc xanadayam — mağaradan çıxıram.'};
+    const path = bfs(here, k => k === '1,1', k => inf.safe(k));
+    if (path && path.length) return {a: stepToward(path[0]), why};
+    return {a: 'climb', why: 'Geri yol tapılmadı.'};
+  };
+  if (agent.hasGold) return goHome('Qızıl əldədir — eyni təhlükəsiz yolla başlanğıca qayıdıram.');
+
+  // 1) nearest unvisited provably-safe cell
+  const path = bfs(here, k => !kb.visited.has(k) && inf.safe(k), k => inf.safe(k));
+  if (path && path.length) {
+    const t = path[path.length - 1];
+    return {a: stepToward(path[0]), why: `Təhlükəsiz olduğu sübut edilmiş kəşf olunmamış xana: (${t}). Ora gedirəm.`};
+  }
+
+  // 2) shoot the Wumpus if located by stench
+  if (agent.arrows > 0 && !kb.wumpusDead && kb.stenchSeen && inf.cands.size > 0) {
+    const dist = safeDist();
+    let best = null;
+    dist.forEach((dd, s) => {
+      const [sx, sy] = parse(s);
+      for (let d = 0; d < 4; d++) {
+        const hits = rayCells(sx, sy, d).filter(c => inf.cands.has(c)).length;
+        if (!hits) continue;
+        const turns = s === here ? [0, 1, 2, 1][(d - agent.dir + 4) % 4] : 1;
+        const cost = dd + turns;
+        if (!best || hits > best.hits || (hits === best.hits && cost < best.cost)) best = {s, d, hits, cost};
+      }
+    });
+    if (best) {
+      const why = inf.wSure
+        ? `Təhlükəsiz xana qalmayıb. Wumpus (${inf.wSure}) xanasındadır — ona atəş açacağam.`
+        : `Təhlükəsiz xana qalmayıb. Wumpus ${inf.cands.size} xanadan birindədir — ən çox ehtimallı xətt boyunca atəş açıram.`;
+      if (best.s === here) {
+        const t = turnToward(best.d);
+        return t ? {a: t, why} : {a: 'shoot', why};
+      }
+      const pp = bfs(here, k => k === best.s, k => inf.safe(k));
+      if (pp && pp.length) return {a: stepToward(pp[0]), why: why + ' Atəş mövqeyinə gedirəm.'};
+    }
+  }
+
+  // 3) calculated risk
+  const dist = safeDist();
+  let best = null;
+  dist.forEach((dd, s) => {
+    const [sx, sy] = parse(s);
+    nbk(sx, sy).forEach(c => {
+      if (kb.visited.has(c.k) || inf.safe(c.k)) return;
+      const r = riskOf(c.k), cost = dd + 1;
+      if (!best || r < best.r - 1e-9 || (Math.abs(r - best.r) < 1e-9 && cost < best.cost)) best = {k: c.k, r, cost};
+    });
+  });
+  if (best && best.r < 0.5) {
+    const pp = bfs(here, k => k === best.k, k => inf.safe(k) || k === best.k);
+    if (pp && pp.length) return {a: stepToward(pp[0]), why: `Təhlükəsiz xana qalmayıb. Ən az riskli xana (${best.k}), təxmini risk ≈ ${Math.round(best.r * 100)}%. Riskə gedirəm.`};
+  }
+  return goHome('Risk çox yüksəkdir, təhlükəsiz yol yoxdur — qızılsız geri qayıdıb çıxıram.');
+}
+function agentStep() {
+  if (agent.done) return;
+  const d = decide();
+  act(d.a, d.why);
+}
+
+/* ===================== Actions ===================== */
+function act(a, why) {
+  if (agent.done) return;
+  stats.steps++; stats.score -= 1;
+  trans = {bump: false, scream: false};
+  const D = DIRS[agent.dir];
+  if (a === 'forward') {
+    const nx = agent.x + D.dx, ny = agent.y + D.dy;
+    if (!inb(nx, ny)) {
+      trans.bump = true;
+      addLog('warn', 'Divara toqquşdu — yerindən tərpənmədi.');
+      flash('Toqquşma!', 'warn');
+    } else {
+      agent.x = nx; agent.y = ny;
+      addLog('move', `(${nx},${ny}) xanasına keçdi.`);
+      if (isPit(nx, ny)) { kill('pit', `(${nx},${ny}) xanasındakı quyuya düşdü!`); }
+      else if (world.wumpus.alive && world.wumpus.x === nx && world.wumpus.y === ny) { kill('wumpus', `Wumpus (${nx},${ny}) xanasında idi — agenti yedi!`); }
+      else { const p = observe(); addLog('percept', 'Hiss olunur: ' + perceptText(p) + '.'); }
+    }
+  } else if (a === 'left') {
+    agent.dir = (agent.dir + 1) % 4; angle -= 90;
+    addLog('move', 'Sola döndü → ' + DIRS[agent.dir].name + '.');
+  } else if (a === 'right') {
+    agent.dir = (agent.dir + 3) % 4; angle += 90;
+    addLog('move', 'Sağa döndü → ' + DIRS[agent.dir].name + '.');
+  } else if (a === 'grab') {
+    if (!world.gold.taken && world.gold.x === agent.x && world.gold.y === agent.y) {
+      world.gold.taken = true; agent.hasGold = true;
+      addLog('good', 'Qızılı götürdü!'); flash('Qızıl götürüldü!', 'good');
+    } else addLog('warn', 'Burada götürüləcək heç nə yoxdur.');
+  } else if (a === 'shoot') {
+    if (agent.arrows <= 0) { addLog('warn', 'Ox qalmayıb.'); }
+    else {
+      agent.arrows--; stats.score -= 10;
+      const ray = rayCells(agent.x, agent.y, agent.dir);
+      const hitIdx = ray.findIndex(k => world.wumpus.alive && k === key(world.wumpus.x, world.wumpus.y));
+      flyArrow(agent.x, agent.y, agent.dir, hitIdx >= 0 ? hitIdx + 1 : ray.length + 0.5);
+      if (hitIdx >= 0) {
+        world.wumpus.alive = false; kb.wumpusDead = true; trans.scream = true;
+        addLog('shoot', `Ox atıldı (${D.name}) — Wumpus öldü! Qışqırıq eşidildi.`);
+        flash('Qışqırıq! Wumpus öldü', 'purple');
+      } else {
+        ray.forEach(k => kb.missed.add(k));
+        addLog('shoot', `Ox atıldı (${D.name}) — heç nəyə dəymədi.`);
+        flash('Ox boşa getdi', 'warn');
+      }
+    }
+  } else if (a === 'climb') {
+    if (agent.x === 1 && agent.y === 1) {
+      agent.done = true;
+      if (agent.hasGold) { stats.score += 1000; addLog('good', 'Qızılla mağaradan çıxdı. +1000 xal!'); finish('win'); }
+      else { addLog('info', 'Qızılsız mağaradan çıxdı.'); finish('left'); }
+    } else addLog('warn', 'Yalnız (1,1) xanasından çıxmaq olar.');
+  }
+  if (why) thought = why;
+  render();
+}
+function kill(type, text) {
+  agent.alive = false; agent.done = true; stats.score -= 1000;
+  addLog('bad', text + ' −1000 xal.');
+  flash(type === 'pit' ? 'Quyuya düşdün!' : 'Wumpus səni yedi!', 'bad');
+  const f = $('#flash'); f.style.background = 'radial-gradient(circle,transparent 30%,rgba(255,40,70,.7))';
+  f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  finish(type);
+}
+function finish(type) {
+  stopAuto();
+  if (type === 'win') sess.win++; else if (type === 'left') sess.left++; else sess.dead++;
+  endTimer = setTimeout(() => showEnd(type), type === 'win' || type === 'left' ? 700 : 1100);
+}
+function showEnd(type) {
+  const M = {
+    win:   {cls: 'win',  t: 'Qələbə!',  d: 'Agent qızılı tapdı və mağaradan sağ çıxdı.'},
+    pit:   {cls: 'lose', t: 'Məğlubiyyət', d: 'Agent quyuya düşdü.'},
+    wumpus:{cls: 'lose', t: 'Məğlubiyyət', d: 'Wumpus agenti yedi.'},
+    left:  {cls: 'left', t: 'Qızılsız çıxış', d: 'Agent təhlükəsiz yol tapmadı və boş əllə çıxdı.'}
+  }[type];
+  $('#overlay').innerHTML = `<div class="end-card ${M.cls}">
+    <h2>${M.t}</h2><p>${M.d}</p>
+    <div class="big">${stats.score > 0 ? '+' : ''}${stats.score}</div><p>xal · ${stats.steps} addım</p>
+    <div class="end-actions"><button class="btn primary" id="oNew">✦ Yeni dünya</button><button class="btn" id="oReplay">↺ Eyni dünya</button></div></div>`;
+  $('#overlay').classList.add('show');
+  $('#oNew').onclick = newWorld; $('#oReplay').onclick = () => startGame(world0);
+  renderSession();
+}
+
+/* ===================== Effects ===================== */
+let bannerT;
+function flash(text, type) {
+  const b = $('#banner'); b.textContent = text; b.className = 'banner show ' + type;
+  clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove('show'), 1700);
+}
+function flyArrow(x, y, d, steps) {
+  const el = document.createElement('div'); el.className = 'arrow';
+  el.innerHTML = '<svg viewBox="0 0 64 24"><use href="#i-arrow"/></svg>';
+  const cx = v => (v - 0.5) / N * 100, cy = v => (N - v + 0.5) / N * 100;
+  const D = DIRS[d];
+  el.style.transform = `translate(-50%,-50%) rotate(${D.ang}deg)`;
+  const sx = cx(x), sy = cy(y), ex = cx(x + D.dx * steps), ey = cy(y + D.dy * steps);
+  el.style.left = sx + '%'; el.style.top = sy + '%';
+  $('#board').appendChild(el);
+  const an = el.animate([{left: sx + '%', top: sy + '%'}, {left: ex + '%', top: ey + '%'}], {duration: 120 + steps * 130, easing: 'ease-in', fill: 'forwards'});
+  an.finished.then(() => el.remove()).catch(() => el.remove());
+}
+
+/* ===================== Rendering ===================== */
+const svgI = (id, cls, vb) => `<svg class="${cls}" viewBox="${vb || '0 0 64 64'}"><use href="#${id}"/></svg>`;
+function addLog(type, text) { logs.unshift({s: stats.steps, type, text}); if (logs.length > 120) logs.pop(); }
+
+function kbBadge(k) {
+  if (inf.pitSure.has(k)) return '<span class="kb danger">Quyu!</span>';
+  if (inf.wSure === k) return '<span class="kb danger">Wumpus!</span>';
+  if (inf.safe(k)) return '<span class="kb safe">Təhlükəsiz</span>';
+  const parts = [];
+  if (!inf.noPit.has(k)) parts.push('Q?');
+  if (kb.stenchSeen && inf.cands.has(k)) parts.push('W?');
+  return `<span class="kb maybe">${parts.join(' ') || '?'}</span>`;
+}
+function renderBoard() {
+  $('#board').style.setProperty('--n', N);
+  const showAll = reveal || agent.done;
+  let h = '';
+  for (let y = N; y >= 1; y--) for (let x = 1; x <= N; x++) {
+    const k = key(x, y), vis = kb.visited.has(k), show = showAll || vis;
+    let cls = 'cell' + (vis ? ' visited' : '') + (!show ? ' fog' : ''), inner = '';
+    if (x === 1 && y === 1) inner += '<span class="exit">ÇIXIŞ</span>';
+    if (show) {
+      if (isPit(x, y)) inner += svgI('i-pit', 'ico pitico');
+      if (world.wumpus.x === x && world.wumpus.y === y) inner += svgI(world.wumpus.alive ? 'i-wumpus' : 'i-wumpus-dead', 'ico wump');
+      if (!world.gold.taken && world.gold.x === x && world.gold.y === y) inner += svgI('i-gold', 'ico gold');
+      const p = perceive(x, y); let b = '';
+      if (p.breeze) b += `<span class="bd br">${svgI('i-breeze', '', '0 0 24 24')}</span>`;
+      if (p.stench) b += `<span class="bd st">${svgI('i-stench', '', '0 0 24 24')}</span>`;
+      if (b) inner += `<div class="badges">${b}</div>`;
+    } else if (showKB) inner += kbBadge(k);
+    h += `<div class="${cls}">${inner}<span class="coord">${x},${y}</span></div>`;
+  }
+  $('#grid').innerHTML = h;
+}
+function renderAgent() {
+  const a = $('#agent');
+  a.style.transform = `translate(${(agent.x - 1) * 100}%,${(N - agent.y) * 100}%)`;
+  $('#agentBody').style.transform = `rotate(${angle}deg)`;
+  a.classList.toggle('dead', !agent.alive);
+  a.classList.toggle('has', agent.hasGold);
+  a.classList.toggle('win', agent.done && agent.alive && agent.hasGold);
+}
+function renderPercepts() {
+  const p = agent.alive ? perceive(agent.x, agent.y) : {breeze: false, stench: false, glitter: false};
+  const on = {breeze: p.breeze, stench: p.stench, glitter: p.glitter, bump: trans.bump, scream: trans.scream};
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', !!on[c.dataset.p]));
+}
+function renderStats() {
+  const sc = $('#vScore'); sc.textContent = stats.score; sc.className = stats.score > 0 ? 'pos' : (stats.score < 0 ? 'neg' : '');
+  $('#vSteps').textContent = stats.steps; $('#vArrows').textContent = agent.arrows;
+  $('#vPos').textContent = `(${agent.x},${agent.y})`; $('#vDir').textContent = DIRS[agent.dir].name;
+  $('#vGold').textContent = agent.hasGold ? 'əldədir ✓' : (world.gold.taken ? '—' : 'yoxdur');
+  $('#vWump').textContent = world.wumpus.alive ? 'sağdır' : 'öldü';
+}
+function renderLog() {
+  $('#log').innerHTML = logs.map(l => `<div class="l ${l.type}"><i>#${l.s}</i>${l.text}</div>`).join('');
+}
+function renderSession() {
+  $('#sWin').textContent = sess.win; $('#sDead').textContent = sess.dead; $('#sLeft').textContent = sess.left;
+}
+function render() {
+  infer();
+  renderBoard(); renderAgent(); renderPercepts(); renderStats(); renderLog();
+  $('#thought').textContent = thought;
+  $('#bStep').disabled = agent.done; $('#bAuto').disabled = agent.done && !auto;
+  document.querySelectorAll('.pad .btn').forEach(b => b.disabled = agent.done);
+}
+
+/* ===================== Auto-run ===================== */
+const delay = () => 1250 - (+$('#speed').value) * 115;
+function tick() {
+  if (!auto) return;
+  if (agent.done) { stopAuto(); return; }
+  agentStep();
+  timer = setTimeout(tick, delay());
+}
+function startAuto() {
+  if (agent.done) return;
+  auto = true; $('#bAuto').textContent = '❚❚ Dayandır'; tick();
+}
+function stopAuto() {
+  auto = false; clearTimeout(timer);
+  const b = $('#bAuto'); if (b) b.textContent = '▶ Avtomatik';
+}
+
+/* ===================== Events ===================== */
+$('#bAuto').onclick = () => auto ? stopAuto() : startAuto();
+$('#bStep').onclick = () => { stopAuto(); agentStep(); };
+$('#bNew').onclick = newWorld;
+$('#bReplay').onclick = () => startGame(world0);
+document.querySelectorAll('.pad .btn').forEach(b => b.onclick = () => manual(b.dataset.a));
+function manual(a) { if (agent.done) return; stopAuto(); act(a, 'Əl ilə idarə olunur.'); }
+$('#size').onchange = e => { N = +e.target.value; newWorld(); };
+$('#pitP').oninput = e => { pitP = +e.target.value / 100; $('#pitLbl').textContent = e.target.value + '%'; };
+$('#pitP').onchange = newWorld;
+$('#tReveal').onchange = e => { reveal = e.target.checked; render(); };
+$('#tKB').onchange = e => { showKB = e.target.checked; render(); };
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  const m = {ArrowUp: 'forward', w: 'forward', ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', g: 'grab', ' ': 'shoot', c: 'climb'};
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (m[k]) { e.preventDefault(); manual(m[k]); }
+  else if (k === 'Enter') { e.preventDefault(); if (!agent.done) { stopAuto(); agentStep(); } }
+  else if (k === 'n') newWorld();
+});
+
+newWorld();
+renderSession();
+</script>
+</body>
+</html>
